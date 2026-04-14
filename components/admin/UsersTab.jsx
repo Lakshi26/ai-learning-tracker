@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { format } from 'date-fns';
 
@@ -140,28 +140,20 @@ export default function UsersTab() {
   const [selectedUser, setSelectedUser] = useState(null);
 
   useEffect(() => {
-    async function fetchData() {
-      const [subSnap, attSnap] = await Promise.all([
-        getDocs(collection(db, 'submissions')),
-        getDocs(collection(db, 'attendance')),
-      ]);
-      setSubmissions(
-        subSnap.docs.map((d) => ({
-          id: d.id,
-          ...d.data(),
-          timestamp: d.data().timestamp?.toDate?.() ?? null,
-        }))
-      );
-      setAttendance(
-        attSnap.docs.map((d) => ({
-          id: d.id,
-          ...d.data(),
-          timestamp: d.data().timestamp?.toDate?.() ?? null,
-        }))
-      );
+    const unsubSubs = onSnapshot(collection(db, 'submissions'), (snap) => {
+      setSubmissions(snap.docs.map((d) => ({
+        id: d.id, ...d.data(),
+        timestamp: d.data().timestamp?.toDate?.() ?? null,
+      })));
       setLoading(false);
-    }
-    fetchData();
+    });
+    const unsubAtt = onSnapshot(collection(db, 'attendance'), (snap) => {
+      setAttendance(snap.docs.map((d) => ({
+        id: d.id, ...d.data(),
+        timestamp: d.data().timestamp?.toDate?.() ?? null,
+      })));
+    });
+    return () => { unsubSubs(); unsubAtt(); };
   }, []);
 
   if (loading) {
@@ -223,7 +215,7 @@ export default function UsersTab() {
               <tr className="border-b border-gray-100 bg-gray-50">
                 <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-widest px-6 py-3">Name</th>
                 <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-widest px-6 py-3">Weeks Present</th>
-                <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-widest px-6 py-3">Total Sessions</th>
+                <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-widest px-6 py-3">Total Days Present</th>
                 <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-widest px-6 py-3">Submissions</th>
                 <th className="px-6 py-3" />
               </tr>
@@ -261,7 +253,9 @@ export default function UsersTab() {
                       </div>
                     </td>
                     <td className="px-6 py-3.5">
-                      <span className="text-sm font-bold text-gray-900">{user.weeksPresent.size}</span>
+                      <span className="inline-flex items-center gap-1.5 text-sm font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-full">
+                        {attendance.filter((a) => a.userId === user.userId).length}
+                      </span>
                     </td>
                     <td className="px-6 py-3.5">
                       <span className="text-sm text-gray-600">{subCount}</span>

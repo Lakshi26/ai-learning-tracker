@@ -431,7 +431,7 @@ export default function Home() {
               {isAdmin(roles) && (
                 <button
                   onClick={() => setCurrentView('admin')}
-                  className="text-[11px] font-semibold text-gray-600 border border-gray-200 hover:border-indigo-300 hover:text-indigo-600 px-3 py-1 rounded-full transition-colors"
+                  className="text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 px-4 py-1.5 rounded-lg transition-colors shadow-sm"
                 >
                   Admin
                 </button>
@@ -439,7 +439,7 @@ export default function Home() {
               <button
                 onClick={handleSignOut}
                 title="Sign out"
-                className="text-[11px] font-medium text-gray-400 hover:text-gray-600 transition-colors"
+                className="text-xs font-semibold text-gray-600 hover:text-gray-900 transition-colors"
               >
                 Sign out
               </button>
