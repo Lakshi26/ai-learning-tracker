@@ -511,10 +511,10 @@ export default function Home() {
           <section className="py-10 sm:py-12">
 
             {/* Week + Title + Description container */}
-            <div className="bg-gray-50 border border-gray-100 rounded-2xl px-6 py-5 mb-6">
+            <div className="rounded-2xl px-6 py-5 mb-6" style={{ backgroundColor: '#F1EFFF', border: '1px solid #E4E0FF' }}>
               {/* Week pill */}
               <div className="mb-3">
-                <span className="inline-flex items-center text-xs font-semibold text-indigo-600 bg-white border border-indigo-100 px-3 py-1 rounded-full shadow-sm">
+                <span className="inline-flex items-center text-xs font-semibold text-indigo-600 bg-white border border-indigo-200 px-3 py-1 rounded-full shadow-sm">
                   Week {selectedSession?.weekNumber ?? selectedWeek}
                   {selectedSession?.date && (
                     <span className="text-indigo-400 font-normal ml-1.5">· {selectedSession.date}</span>
