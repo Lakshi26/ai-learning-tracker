@@ -655,7 +655,7 @@ export default function Home() {
           {attendance.length > 0 && (
             <section className="mb-10 animate-fade-in">
               <div className="flex items-center gap-2 mb-3">
-                <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-widest">Attendance</p>
+                <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-widest">Attendees</p>
                 <span className="text-[10px] font-bold text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded-full">{attendance.length}</span>
               </div>
               <div className="flex flex-wrap gap-2">
