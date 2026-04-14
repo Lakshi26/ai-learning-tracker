@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Head from 'next/head';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import {
@@ -45,6 +45,22 @@ const AVATAR_COLORS = [
 function getAvatarColor(name = '') {
   const idx = name.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % AVATAR_COLORS.length;
   return AVATAR_COLORS[idx];
+}
+
+function extractMonth(dateStr) {
+  if (!dateStr) return null;
+  const d = new Date(dateStr);
+  if (!isNaN(d.getTime())) {
+    return d.toLocaleString('default', { month: 'long', year: 'numeric' });
+  }
+  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const monthAbbr  = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+  const lower = dateStr.toLowerCase();
+  const idx = monthAbbr.findIndex((m) => lower.includes(m));
+  if (idx === -1) return null;
+  const yearMatch = dateStr.match(/\d{4}/);
+  const year = yearMatch ? yearMatch[0] : new Date().getFullYear();
+  return `${monthNames[idx]} ${year}`;
 }
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
@@ -160,6 +176,7 @@ export default function Home() {
 
   // UI
   const [selectedWeek,      setSelectedWeek]      = useState(null);
+  const [selectedMonth,     setSelectedMonth]     = useState(null);
   const [filter,            setFilter]            = useState('all');
   const [showSubmitModal,   setShowSubmitModal]   = useState(false);
   const [editingSubmission, setEditingSubmission] = useState(null);
@@ -250,6 +267,38 @@ export default function Home() {
     ? submissions.filter((s) => presentIds.has(s.userId))
     : submissions;
   const presentFilteredCount = submissions.filter((s) => presentIds.has(s.userId)).length;
+
+  // ── Month / week grouping ──────────────────────────────────────────────────
+  const months = useMemo(() => {
+    const seen = new Set();
+    const result = [];
+    weeks.forEach((w) => {
+      const m = extractMonth(w.date) ?? `Group ${Math.ceil(w.weekNumber / 4)}`;
+      if (!seen.has(m)) { seen.add(m); result.push(m); }
+    });
+    return result;
+  }, [weeks]);
+
+  const activeMonth = selectedMonth ?? months[months.length - 1] ?? null;
+
+  const weeksInMonth = useMemo(() => {
+    if (!activeMonth || months.length <= 1) return weeks;
+    return weeks.filter((w) => {
+      const m = extractMonth(w.date) ?? `Group ${Math.ceil(w.weekNumber / 4)}`;
+      return m === activeMonth;
+    });
+  }, [weeks, activeMonth, months]);
+
+  // Auto-select first week when month changes
+  useEffect(() => {
+    if (weeksInMonth.length > 0) {
+      const current = weeksInMonth.find((w) => w.weekNumber === selectedWeek);
+      if (!current) {
+        setSelectedWeek(weeksInMonth[weeksInMonth.length - 1].weekNumber);
+        setFilter('all');
+      }
+    }
+  }, [activeMonth]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
   const handleMarkPresent = async () => {
@@ -346,10 +395,10 @@ export default function Home() {
       <div className="min-h-screen bg-white">
 
         {/* ══════════════════════════════════════════════════════════════
-            TOP NAV — sticky, white, with logo · week tabs · user info
+            TOP NAV — sticky, Logo + User info only
         ══════════════════════════════════════════════════════════════ */}
         <header className="sticky top-0 z-30 bg-white border-b border-gray-100">
-          <div className="max-w-5xl mx-auto px-4 sm:px-6 h-[56px] flex items-center gap-4">
+          <div className="max-w-5xl mx-auto px-4 sm:px-6 h-[56px] flex items-center justify-between gap-4">
 
             {/* Logo */}
             <div className="flex items-center gap-2 flex-shrink-0">
@@ -359,47 +408,14 @@ export default function Home() {
               </span>
             </div>
 
-            {/* Divider */}
-            <div className="w-px h-5 bg-gray-200 flex-shrink-0" />
-
-            {/* ── Week tabs ─────────────────────────────────────────── */}
-            <div className="flex items-center gap-1 overflow-x-auto flex-1 hide-scrollbar">
-              {weeksLoading ? (
-                [...Array(4)].map((_, i) => (
-                  <div key={i} className="flex-shrink-0 w-20 h-7 skeleton rounded-lg" />
-                ))
-              ) : weeks.map((w) => {
-                const active = selectedWeek === w.weekNumber;
-                return (
-                  <button
-                    key={w.weekNumber}
-                    onClick={() => { setSelectedWeek(w.weekNumber); setFilter('all'); }}
-                    title={w.topic}
-                    className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
-                      active
-                        ? 'bg-indigo-600 text-white'
-                        : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
-                    }`}
-                  >
-                    Week {w.weekNumber}
-                  </button>
-                );
-              })}
-            </div>
-
             {/* ── Right: avatar + name + Admin button ───────────────── */}
             <div className="flex items-center gap-2.5 flex-shrink-0">
-              {/* Avatar */}
               <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${getAvatarColor(currentUser.name)}`}>
                 {getInitials(currentUser.name)}
               </div>
-
-              {/* Name */}
               <span className="hidden sm:block text-sm font-medium text-gray-700 max-w-[120px] truncate">
                 {currentUser.name}
               </span>
-
-              {/* Admin button — shown to admins */}
               {isAdmin(roles) && (
                 <button
                   onClick={() => setCurrentView('admin')}
@@ -408,8 +424,6 @@ export default function Home() {
                   Admin
                 </button>
               )}
-
-              {/* Sign out */}
               <button
                 onClick={handleSignOut}
                 title="Sign out"
@@ -420,6 +434,62 @@ export default function Home() {
             </div>
           </div>
         </header>
+
+        {/* ══════════════════════════════════════════════════════════════
+            WEEK / MONTH SELECTOR BAR — sticky below nav
+        ══════════════════════════════════════════════════════════════ */}
+        <div className="sticky top-[56px] z-20 bg-white/95 backdrop-blur-sm border-b border-gray-100">
+          <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3">
+            <div className="flex items-center gap-3">
+
+              {/* Month dropdown — only if multiple months */}
+              {months.length > 1 && (
+                <div className="flex-shrink-0">
+                  <select
+                    value={activeMonth ?? ''}
+                    onChange={(e) => { setSelectedMonth(e.target.value); }}
+                    className="text-sm font-semibold text-gray-700 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 pr-8 appearance-none cursor-pointer hover:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-all"
+                    style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center', backgroundSize: '16px' }}
+                  >
+                    {months.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Week tabs */}
+              <div className="flex items-center gap-2 overflow-x-auto flex-1 hide-scrollbar pb-0.5">
+                {weeksLoading ? (
+                  [...Array(4)].map((_, i) => (
+                    <div key={i} className="flex-shrink-0 w-24 h-9 skeleton rounded-xl" />
+                  ))
+                ) : weeksInMonth.map((w) => {
+                  const active = selectedWeek === w.weekNumber;
+                  return (
+                    <button
+                      key={w.weekNumber}
+                      onClick={() => { setSelectedWeek(w.weekNumber); setFilter('all'); }}
+                      title={w.topic}
+                      className={`flex-shrink-0 px-5 py-2 rounded-xl text-sm font-semibold transition-all whitespace-nowrap ${
+                        active
+                          ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-200'
+                          : 'text-gray-500 bg-gray-100 hover:bg-gray-200 hover:text-gray-900'
+                      }`}
+                    >
+                      Week {w.weekNumber}
+                      {w.topic && (
+                        <span className={`ml-1.5 text-xs font-normal hidden sm:inline ${active ? 'text-indigo-200' : 'text-gray-400'}`}>
+                          · {w.topic.length > 20 ? w.topic.slice(0, 20) + '…' : w.topic}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
 
         <main className="max-w-5xl mx-auto px-4 sm:px-6">
 
@@ -465,18 +535,6 @@ export default function Home() {
               </div>
             )}
 
-            {/* Recording banner — admin-only management (hidden visually, keeps add/edit) */}
-            {isAdmin(roles) && (
-              <div className="mb-6">
-                <RecordingBanner
-                  recording={recording}
-                  currentUser={currentUser}
-                  selectedWeek={selectedWeek}
-                  selectedSession={selectedSession}
-                />
-              </div>
-            )}
-
             {/* Separator */}
             <hr className="border-gray-100 mb-6" />
 
@@ -487,7 +545,7 @@ export default function Home() {
                 <button
                   onClick={handleUnmarkPresent}
                   disabled={unmarkingPresent}
-                  className="group inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 text-gray-600 bg-white hover:border-rose-200 hover:text-rose-600 hover:bg-rose-50 disabled:opacity-60 transition-all"
+                  className="group inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60 transition-all shadow-sm shadow-emerald-200"
                 >
                   {unmarkingPresent ? (
                     <><SpinnerIcon /> Removing…</>
@@ -499,7 +557,7 @@ export default function Home() {
                 <button
                   onClick={handleMarkPresent}
                   disabled={markingPresent}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 text-gray-700 bg-white hover:border-gray-300 hover:bg-gray-50 disabled:opacity-60 disabled:cursor-wait transition-all"
+                  className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800 disabled:opacity-60 disabled:cursor-wait transition-all shadow-sm shadow-indigo-200 hover:shadow-md hover:shadow-indigo-200"
                 >
                   {markingPresent ? <><SpinnerIcon /> Marking…</> : '👋 Mark Present'}
                 </button>
