@@ -71,10 +71,6 @@ export default function DashboardTab() {
         <p className="text-sm text-gray-400 mt-1">Overview of all AI learning sessions</p>
       </div>
 
-      {/* Stat cards */}
-      <div className="grid grid-cols-1 gap-4">
-        <StatCard label="Unique Members" value={totalUniqueUsers} color="emerald" />
-      </div>
 
       {/* Weekly breakdown table */}
       <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
