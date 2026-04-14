@@ -511,7 +511,7 @@ export default function Home() {
           <section className="py-10 sm:py-12">
 
             {/* Week + Title + Description container */}
-            <div className="rounded-2xl px-6 py-5 mb-6" style={{ backgroundColor: '#F4ECE5', border: '1px solid #EAD9CE' }}>
+            <div className="rounded-2xl px-6 py-5 mb-6" style={{ backgroundColor: '#F6F5FF', border: '1px solid #E5E3FF' }}>
               {/* Week pill */}
               <div className="mb-3">
                 <span className="inline-flex items-center text-xs font-semibold text-indigo-600 bg-white border border-indigo-200 px-3 py-1 rounded-full shadow-sm">
