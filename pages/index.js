@@ -49,10 +49,23 @@ function getAvatarColor(name = '') {
 
 function extractMonth(dateStr) {
   if (!dateStr) return null;
+
+  // Handle DD/MM/YY or DD/MM/YYYY (e.g. "12/04/26" → April 2026)
+  const dmyMatch = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (dmyMatch) {
+    const [, day, month, yr] = dmyMatch;
+    const year = yr.length === 2 ? 2000 + parseInt(yr) : parseInt(yr);
+    const d = new Date(year, parseInt(month) - 1, parseInt(day));
+    if (!isNaN(d.getTime())) return d.toLocaleString('default', { month: 'long', year: 'numeric' });
+  }
+
+  // Standard JS parsing
   const d = new Date(dateStr);
-  if (!isNaN(d.getTime())) {
+  if (!isNaN(d.getTime()) && d.getFullYear() > 1970) {
     return d.toLocaleString('default', { month: 'long', year: 'numeric' });
   }
+
+  // Month name in string (e.g. "Jan 15" or "15 January 2025")
   const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   const monthAbbr  = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
   const lower = dateStr.toLowerCase();
@@ -442,8 +455,8 @@ export default function Home() {
           <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3">
             <div className="flex items-center gap-3">
 
-              {/* Month dropdown — only if multiple months */}
-              {months.length > 1 && (
+              {/* Month dropdown — always visible */}
+              {months.length >= 1 && (
                 <div className="flex-shrink-0">
                   <select
                     value={activeMonth ?? ''}
