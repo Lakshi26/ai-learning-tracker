@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import { GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
+import { GoogleAuthProvider, signInWithRedirect, getRedirectResult, signOut } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import { getRoles, ALLOWED_DOMAIN } from '../lib/roles';
 
@@ -20,37 +20,43 @@ function GoogleIcon() {
 // Single sign-in flow. Roles (admin / team) are assigned after login based on
 // email — no role selection required before signing in.
 export default function AuthGate({ authError }) {
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState(authError || '');
   const router = useRouter();
+
+  // Handle redirect result when returning from Google sign-in
+  useEffect(() => {
+    getRedirectResult(auth)
+      .then(async (result) => {
+        if (result) {
+          const email = result.user.email;
+          const roles = getRoles(email);
+          if (roles.length === 0) {
+            await signOut(auth);
+            setError(`Access is restricted to @${ALLOWED_DOMAIN} accounts. You signed in as ${email}.`);
+          } else {
+            router.push('/');
+          }
+        }
+      })
+      .catch((err) => {
+        setError('Sign-in failed. Please try again.');
+        console.error(err);
+      })
+      .finally(() => setLoading(false));
+  }, []);
 
   const handleSignIn = async () => {
     setError('');
     setLoading(true);
-
     try {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ hd: ALLOWED_DOMAIN });
-      const result = await signInWithPopup(auth, provider);
-      const email  = result.user.email;
-
-      const roles = getRoles(email);
-      if (roles.length === 0) {
-        await signOut(auth);
-        setError(`Access is restricted to @${ALLOWED_DOMAIN} accounts. You signed in as ${email}.`);
-        return;
-      }
-
-      // All authorised users land on the main page.
-      // The main page assigns roles and shows the appropriate view.
-      router.push('/');
-
+      await signInWithRedirect(auth, provider);
+      // Page will redirect to Google — no further code runs here
     } catch (err) {
-      if (!['auth/popup-closed-by-user', 'auth/cancelled-popup-request'].includes(err.code)) {
-        setError('Sign-in failed. Please try again.');
-        console.error(err);
-      }
-    } finally {
+      setError('Sign-in failed. Please try again.');
+      console.error(err);
       setLoading(false);
     }
   };
