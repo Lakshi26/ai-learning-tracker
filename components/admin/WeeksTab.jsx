@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   collection, onSnapshot, addDoc, updateDoc,
-  doc, serverTimestamp, query, orderBy,
+  doc, serverTimestamp, query, orderBy, where, getDocs,
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../lib/firebase';
@@ -39,15 +39,16 @@ function formatDateDisplay(raw) {
 }
 
 // ── Week Form (create / edit) ─────────────────────────────────────────────────
-function WeekForm({ initial, onSave, onCancel, saving, currentUser }) {
+function WeekForm({ initial, initialRecordingLink, onSave, onCancel, saving, currentUser }) {
   const datePickerRef = useRef(null);
   const [form, setForm] = useState({
-    weekNumber:  initial?.weekNumber  ?? '',
-    topic:       initial?.topic       ?? '',
-    description: initial?.description ?? '',
-    date:        initial?.date        ?? '',
-    dateRaw:     toDateInputValue(initial?.date ?? ''),
-    images:      initial?.images      ?? [],
+    weekNumber:    initial?.weekNumber  ?? '',
+    topic:         initial?.topic       ?? '',
+    description:   initial?.description ?? '',
+    date:          initial?.date        ?? '',
+    dateRaw:       toDateInputValue(initial?.date ?? ''),
+    images:        initial?.images      ?? [],
+    recordingLink: initialRecordingLink ?? '',
   });
   const [imageUrl,   setImageUrl]   = useState('');
   const [uploading,  setUploading]  = useState(false);
@@ -243,6 +244,23 @@ function WeekForm({ initial, onSave, onCancel, saving, currentUser }) {
         )}
       </div>
 
+      {/* Recording Link */}
+      <div>
+        <label className="text-xs font-semibold text-gray-600 block mb-1.5">
+          Recording Link <span className="text-gray-400 font-normal">(optional)</span>
+        </label>
+        <div className="relative">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-base pointer-events-none">🎧</span>
+          <input
+            type="url"
+            value={form.recordingLink}
+            onChange={(e) => set('recordingLink', e.target.value)}
+            placeholder="Paste audio / video URL (Drive, Loom, YouTube…)"
+            className="w-full text-sm border border-gray-200 rounded-xl pl-9 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          />
+        </div>
+      </div>
+
       {/* Actions */}
       <div className="flex gap-3 pt-1">
         <button
@@ -274,44 +292,62 @@ function WeekForm({ initial, onSave, onCancel, saving, currentUser }) {
 
 // ── Main WeeksTab ─────────────────────────────────────────────────────────────
 export default function WeeksTab({ currentUser }) {
-  const [weeks,       setWeeks]       = useState([]);
-  const [loading,     setLoading]     = useState(true);
-  const [showForm,    setShowForm]    = useState(false);
-  const [editingWeek, setEditingWeek] = useState(null);
-  const [saving,      setSaving]      = useState(false);
-  const [lightbox,    setLightbox]    = useState(null); // image URL for preview
+  const [weeks,               setWeeks]              = useState([]);
+  const [recordings,          setRecordings]         = useState({});
+  const [loading,             setLoading]            = useState(true);
+  const [showForm,            setShowForm]           = useState(false);
+  const [editingWeek,         setEditingWeek]        = useState(null);
+  const [editingRecordingLink, setEditingRecordingLink] = useState('');
+  const [saving,              setSaving]             = useState(false);
+  const [lightbox,            setLightbox]           = useState(null);
 
   useEffect(() => {
-    const unsub = onSnapshot(
+    const unsubWeeks = onSnapshot(
       query(collection(db, 'weeks'), orderBy('weekNumber', 'asc')),
       (snap) => {
         setWeeks(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
         setLoading(false);
       }
     );
-    return () => unsub();
+    const unsubRecs = onSnapshot(collection(db, 'recordings'), (snap) => {
+      const map = {};
+      snap.docs.forEach((d) => { const data = { id: d.id, ...d.data() }; map[data.week] = data; });
+      setRecordings(map);
+    });
+    return () => { unsubWeeks(); unsubRecs(); };
   }, []);
 
   const handleSave = async (form) => {
     setSaving(true);
     try {
+      const weekNum = Number(form.weekNumber);
       const data = {
-        weekNumber:  Number(form.weekNumber),
+        weekNumber:  weekNum,
         topic:       form.topic.trim(),
         description: form.description.trim(),
         date:        form.date.trim(),
         images:      form.images,
       };
       if (editingWeek) {
-        await updateDoc(doc(db, 'weeks', editingWeek.id), {
-          ...data, updatedAt: serverTimestamp(),
-        });
+        await updateDoc(doc(db, 'weeks', editingWeek.id), { ...data, updatedAt: serverTimestamp() });
       } else {
-        await addDoc(collection(db, 'weeks'), {
-          ...data,
-          createdBy: currentUser.uid,
-          createdAt: serverTimestamp(),
-        });
+        await addDoc(collection(db, 'weeks'), { ...data, createdBy: currentUser.uid, createdAt: serverTimestamp() });
+      }
+      // Save recording if provided
+      if (form.recordingLink?.trim()) {
+        const existing = recordings[weekNum];
+        if (existing) {
+          await updateDoc(doc(db, 'recordings', existing.id), {
+            recordingLink: form.recordingLink.trim(), updatedAt: serverTimestamp(),
+          });
+        } else {
+          await addDoc(collection(db, 'recordings'), {
+            week: weekNum, topic: form.topic.trim(),
+            recordingLink: form.recordingLink.trim(),
+            createdBy: currentUser.uid, createdByName: currentUser.name,
+            updatedAt: serverTimestamp(),
+          });
+        }
       }
       setShowForm(false);
       setEditingWeek(null);
@@ -322,11 +358,13 @@ export default function WeeksTab({ currentUser }) {
 
   const openEdit = (week) => {
     setEditingWeek(week);
+    setEditingRecordingLink(recordings[week.weekNumber]?.recordingLink ?? '');
     setShowForm(true);
   };
 
   const openCreate = () => {
     setEditingWeek(null);
+    setEditingRecordingLink('');
     setShowForm(true);
   };
 
@@ -365,6 +403,7 @@ export default function WeeksTab({ currentUser }) {
       {showForm && (
         <WeekForm
           initial={editingWeek}
+          initialRecordingLink={editingRecordingLink}
           onSave={handleSave}
           onCancel={cancelForm}
           saving={saving}
@@ -394,7 +433,21 @@ export default function WeeksTab({ currentUser }) {
                   </div>
                   <h3 className="text-sm font-bold text-gray-900 mb-1">{week.topic}</h3>
                   {week.description && (
-                    <p className="text-xs text-gray-500 line-clamp-2">{week.description}</p>
+                    <p className="text-xs text-gray-500 line-clamp-2 mb-1">{week.description}</p>
+                  )}
+                  {recordings[week.weekNumber]?.recordingLink && (
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <span className="text-xs">🎧</span>
+                      <a
+                        href={recordings[week.weekNumber].recordingLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-xs text-indigo-500 hover:underline truncate max-w-xs"
+                      >
+                        Recording added
+                      </a>
+                    </div>
                   )}
                   {/* Image thumbnails */}
                   {week.images?.length > 0 && (
