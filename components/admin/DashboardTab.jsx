@@ -72,10 +72,8 @@ export default function DashboardTab() {
       </div>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-3 gap-4">
-        <StatCard label="Total Submissions" value={submissions.length} color="indigo" />
+      <div className="grid grid-cols-1 gap-4">
         <StatCard label="Unique Members" value={totalUniqueUsers} color="emerald" />
-        <StatCard label="Sessions Tracked" value={allWeeks.length} color="violet" />
       </div>
 
       {/* Weekly breakdown table */}
