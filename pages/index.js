@@ -15,11 +15,10 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { getRoles, isAdmin, ALLOWED_DOMAIN } from '../lib/roles';
-import HomeworkCard    from '../components/HomeworkCard';
-import SubmitModal     from '../components/SubmitModal';
-import AuthGate        from '../components/AuthGate';
-import RecordingBanner from '../components/RecordingBanner';
-import AdminLayout     from '../components/admin/AdminLayout';
+import HomeworkCard from '../components/HomeworkCard';
+import SubmitModal  from '../components/SubmitModal';
+import AuthGate     from '../components/AuthGate';
+import AdminLayout  from '../components/admin/AdminLayout';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function extractNameFromEmail(email) {
@@ -511,42 +510,66 @@ export default function Home() {
           ══════════════════════════════════════════════════════════════ */}
           <section className="py-10 sm:py-12">
 
-            {/* Week pill */}
-            <div className="mb-4">
-              <span className="inline-flex items-center text-xs font-semibold text-indigo-600 bg-indigo-50 border border-indigo-100 px-3 py-1 rounded-full">
-                Week {selectedSession?.weekNumber ?? selectedWeek}
-                {selectedSession?.date && (
-                  <span className="text-indigo-400 font-normal ml-1.5">· {selectedSession.date}</span>
-                )}
-              </span>
+            {/* Week + Title + Description container */}
+            <div className="bg-gray-50 border border-gray-100 rounded-2xl px-6 py-5 mb-6">
+              {/* Week pill */}
+              <div className="mb-3">
+                <span className="inline-flex items-center text-xs font-semibold text-indigo-600 bg-white border border-indigo-100 px-3 py-1 rounded-full shadow-sm">
+                  Week {selectedSession?.weekNumber ?? selectedWeek}
+                  {selectedSession?.date && (
+                    <span className="text-indigo-400 font-normal ml-1.5">· {selectedSession.date}</span>
+                  )}
+                </span>
+              </div>
+
+              {/* Title */}
+              <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 leading-tight mb-2 tracking-tight text-balance">
+                {selectedSession?.topic || 'AI Learning Session'}
+              </h1>
+
+              {/* Description */}
+              {selectedSession?.description && (
+                <p className="text-base text-gray-500 leading-relaxed max-w-2xl">
+                  {selectedSession.description}
+                </p>
+              )}
             </div>
 
-            {/* Title */}
-            <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 leading-tight mb-3 tracking-tight text-balance">
-              {selectedSession?.topic || 'AI Learning Session'}
-            </h1>
-
-            {/* Subtitle / description */}
-            {selectedSession?.description && (
-              <p className="text-base text-gray-500 leading-relaxed mb-6 max-w-2xl">
-                {selectedSession.description}
-              </p>
-            )}
-
-            {/* Watch recording button */}
-            {recording?.url && (
-              <div className="mb-6">
-                <a
-                  href={recording.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-5 py-2.5 rounded-full transition-colors shadow-sm shadow-indigo-200 hover:shadow-md hover:shadow-indigo-200"
-                >
-                  <PlayIcon />
-                  Watch Recording
-                </a>
-              </div>
-            )}
+            {/* Session Recording — visible to all users */}
+            <div className="mb-6">
+              {recording?.recordingLink ? (
+                <div className="inline-flex items-center gap-3 bg-indigo-50 border border-indigo-100 rounded-2xl px-4 py-3">
+                  <div className="w-8 h-8 bg-indigo-100 rounded-xl flex items-center justify-center flex-shrink-0 text-base">
+                    🎧
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold text-indigo-400 uppercase tracking-widest mb-0.5">
+                      Session Recording
+                    </p>
+                    <a
+                      href={recording.recordingLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-sm font-semibold text-indigo-700 hover:text-indigo-900 hover:underline transition-colors"
+                    >
+                      <PlayIcon />
+                      Open Recording
+                      <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                    </a>
+                  </div>
+                </div>
+              ) : (
+                <div className="inline-flex items-center gap-2.5 bg-gray-50 border border-gray-100 rounded-2xl px-4 py-3 text-gray-400">
+                  <span className="text-base">🎧</span>
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-widest mb-0.5">Session Recording</p>
+                    <p className="text-xs">Recording not available yet</p>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Separator */}
             <hr className="border-gray-100 mb-6" />
