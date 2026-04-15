@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { format } from 'date-fns';
 
@@ -134,26 +134,35 @@ function UserDetail({ user, submissions, attendance, onBack }) {
 
 // ── Users Table View ──────────────────────────────────────────────────────────
 export default function UsersTab() {
+  const [weeks,       setWeeks]       = useState([]);
   const [submissions, setSubmissions] = useState([]);
-  const [attendance, setAttendance]   = useState([]);
-  const [loading, setLoading]         = useState(true);
+  const [attendance,  setAttendance]  = useState([]);
+  const [loading,     setLoading]     = useState(true);
   const [selectedUser, setSelectedUser] = useState(null);
 
   useEffect(() => {
+    let weeksLoaded = false;
+    let subLoaded   = false;
+    let attLoaded   = false;
+    const check = () => { if (weeksLoaded && subLoaded && attLoaded) setLoading(false); };
+
+    const unsubWeeks = onSnapshot(
+      query(collection(db, 'weeks'), orderBy('weekNumber', 'asc')),
+      (snap) => { setWeeks(snap.docs.map((d) => ({ id: d.id, ...d.data() }))); weeksLoaded = true; check(); }
+    );
     const unsubSubs = onSnapshot(collection(db, 'submissions'), (snap) => {
       setSubmissions(snap.docs.map((d) => ({
         id: d.id, ...d.data(),
         timestamp: d.data().timestamp?.toDate?.() ?? null,
-      })));
-      setLoading(false);
+      }))); subLoaded = true; check();
     });
     const unsubAtt = onSnapshot(collection(db, 'attendance'), (snap) => {
       setAttendance(snap.docs.map((d) => ({
         id: d.id, ...d.data(),
         timestamp: d.data().timestamp?.toDate?.() ?? null,
-      })));
+      }))); attLoaded = true; check();
     });
-    return () => { unsubSubs(); unsubAtt(); };
+    return () => { unsubWeeks(); unsubSubs(); unsubAtt(); };
   }, []);
 
   if (loading) {
@@ -167,9 +176,15 @@ export default function UsersTab() {
     );
   }
 
-  // Build user map from attendance + submissions
+  // Only count weeks that were actually created by admin
+  const validWeekNumbers = new Set(weeks.map((w) => w.weekNumber));
+
+  // Build user map — only from real attendance records for valid weeks
   const userMap = {};
-  [...attendance, ...submissions].forEach((item) => {
+  const validAttendance = attendance.filter((a) => validWeekNumbers.has(a.week));
+  const validSubmissions = submissions.filter((s) => validWeekNumbers.has(s.week));
+
+  [...validAttendance, ...validSubmissions].forEach((item) => {
     if (!item.userId) return;
     if (!userMap[item.userId]) {
       userMap[item.userId] = {
@@ -179,7 +194,7 @@ export default function UsersTab() {
       };
     }
   });
-  attendance.forEach((a) => {
+  validAttendance.forEach((a) => {
     if (a.userId && userMap[a.userId]) userMap[a.userId].weeksPresent.add(a.week);
   });
 
@@ -222,7 +237,7 @@ export default function UsersTab() {
             </thead>
             <tbody>
               {users.map((user) => {
-                const subCount = submissions.filter((s) => s.userId === user.userId).length;
+                const subCount = validSubmissions.filter((s) => s.userId === user.userId).length;
                 return (
                   <tr
                     key={user.userId}
@@ -254,7 +269,7 @@ export default function UsersTab() {
                     </td>
                     <td className="px-6 py-3.5">
                       <span className="inline-flex items-center gap-1.5 text-sm font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-full">
-                        {attendance.filter((a) => a.userId === user.userId).length}
+                        {validAttendance.filter((a) => a.userId === user.userId).length}
                       </span>
                     </td>
                     <td className="px-6 py-3.5">
