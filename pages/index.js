@@ -14,7 +14,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
-import { getRoles, isAdmin, ALLOWED_DOMAIN } from '../lib/roles';
+import { getRoles, isAdmin, isAdminEmail, ALLOWED_DOMAIN } from '../lib/roles';
 import HomeworkCard from '../components/HomeworkCard';
 import SubmitModal  from '../components/SubmitModal';
 import AuthGate     from '../components/AuthGate';
@@ -195,28 +195,49 @@ export default function Home() {
   const [markingPresent,    setMarkingPresent]    = useState(false);
   const [unmarkingPresent,  setUnmarkingPresent]  = useState(false);
 
-  // ── Auth listener ──────────────────────────────────────────────────────────
+  // ── Auth listener + dynamic admin check ───────────────────────────────────
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (fbUser) => {
+    let adminsUnsub = null;
+
+    const authUnsub = onAuthStateChanged(auth, async (fbUser) => {
+      // Clean up previous admins listener
+      if (adminsUnsub) { adminsUnsub(); adminsUnsub = null; }
+
       if (fbUser) {
-        const userRoles = getRoles(fbUser.email);
-        if (userRoles.length === 0) {
+        const baseRoles = getRoles(fbUser.email);
+        if (baseRoles.length === 0) {
           await signOut(auth);
           setCurrentUser(null);
           setRoles([]);
-        } else {
-          setCurrentUser({ uid: fbUser.uid, email: fbUser.email, name: extractNameFromEmail(fbUser.email) });
-          setRoles(userRoles);
-          setAuthError('');
+          setAuthLoading(false);
+          return;
         }
+
+        const user = { uid: fbUser.uid, email: fbUser.email, name: extractNameFromEmail(fbUser.email) };
+        setCurrentUser(user);
+        setAuthError('');
+
+        // Listen to admins collection in real-time
+        adminsUnsub = onSnapshot(collection(db, 'admins'), (snap) => {
+          const adminEmails = snap.docs.map((d) => d.data().email).filter(Boolean);
+          const userRoles   = isAdminEmail(fbUser.email, adminEmails)
+            ? ['admin', 'team']
+            : ['team'];
+          setRoles(userRoles);
+          setAuthLoading(false);
+        });
       } else {
         setCurrentUser(null);
         setRoles([]);
         setCurrentView('team');
+        setAuthLoading(false);
       }
-      setAuthLoading(false);
     });
-    return () => unsub();
+
+    return () => {
+      authUnsub();
+      if (adminsUnsub) adminsUnsub();
+    };
   }, []);
 
   // ── Weeks listener ─────────────────────────────────────────────────────────
