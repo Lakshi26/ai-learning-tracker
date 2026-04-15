@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  collection, onSnapshot, addDoc, updateDoc,
+  collection, onSnapshot, addDoc, updateDoc, deleteDoc,
   doc, serverTimestamp, query, orderBy, where, getDocs,
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -373,6 +373,14 @@ export default function WeeksTab({ currentUser }) {
     setEditingWeek(null);
   };
 
+  const handleDelete = async (week) => {
+    if (!window.confirm(`Delete Week ${week.weekNumber}: "${week.topic}"? This cannot be undone.`)) return;
+    await deleteDoc(doc(db, 'weeks', week.id));
+    // Also delete associated recording if exists
+    const rec = recordings[week.weekNumber];
+    if (rec) await deleteDoc(doc(db, 'recordings', rec.id));
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -467,15 +475,26 @@ export default function WeeksTab({ currentUser }) {
                     </div>
                   )}
                 </div>
-                <button
-                  onClick={() => openEdit(week)}
-                  className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 hover:text-indigo-600 bg-gray-100 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition flex-shrink-0"
-                >
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                  </svg>
-                  Edit
-                </button>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    onClick={() => openEdit(week)}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 hover:text-indigo-600 bg-gray-100 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition"
+                  >
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                    </svg>
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => handleDelete(week)}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-rose-400 hover:text-rose-600 bg-rose-50 hover:bg-rose-100 px-3 py-1.5 rounded-lg transition"
+                  >
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    Delete
+                  </button>
+                </div>
               </div>
             </div>
           ))}
