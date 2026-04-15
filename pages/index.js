@@ -490,11 +490,6 @@ export default function Home() {
                       }`}
                     >
                       Week {w.weekNumber}
-                      {w.topic && (
-                        <span className={`ml-1.5 text-xs font-normal hidden sm:inline ${active ? 'text-indigo-200' : 'text-gray-400'}`}>
-                          · {w.topic.length > 20 ? w.topic.slice(0, 20) + '…' : w.topic}
-                        </span>
-                      )}
                     </button>
                   );
                 })}
