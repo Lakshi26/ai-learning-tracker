@@ -1,28 +1,39 @@
 import { useState, useEffect } from 'react';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { format } from 'date-fns';
 
 export default function SubmissionsTab() {
+  const [weeks,       setWeeks]       = useState([]);
   const [submissions, setSubmissions] = useState([]);
-  const [loading, setLoading]         = useState(true);
-  const [filterWeek, setFilterWeek]   = useState('all');
-  const [filterUser, setFilterUser]   = useState('all');
+  const [loading,     setLoading]     = useState(true);
+  const [filterWeek,  setFilterWeek]  = useState('all');
+  const [filterUser,  setFilterUser]  = useState('all');
 
   useEffect(() => {
-    async function fetchData() {
-      const snap = await getDocs(collection(db, 'submissions'));
+    let weeksLoaded = false;
+    let subLoaded   = false;
+    const check = () => { if (weeksLoaded && subLoaded) setLoading(false); };
+
+    const unsubWeeks = onSnapshot(
+      query(collection(db, 'weeks'), orderBy('weekNumber', 'asc')),
+      (snap) => {
+        setWeeks(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        weeksLoaded = true;
+        check();
+      }
+    );
+
+    const unsubSubs = onSnapshot(collection(db, 'submissions'), (snap) => {
       const data = snap.docs
-        .map((d) => ({
-          id: d.id,
-          ...d.data(),
-          timestamp: d.data().timestamp?.toDate?.() ?? null,
-        }))
+        .map((d) => ({ id: d.id, ...d.data(), timestamp: d.data().timestamp?.toDate?.() ?? null }))
         .sort((a, b) => (b.timestamp?.getTime() ?? 0) - (a.timestamp?.getTime() ?? 0));
       setSubmissions(data);
-      setLoading(false);
-    }
-    fetchData();
+      subLoaded = true;
+      check();
+    });
+
+    return () => { unsubWeeks(); unsubSubs(); };
   }, []);
 
   if (loading) {
@@ -36,11 +47,15 @@ export default function SubmissionsTab() {
     );
   }
 
-  // Build filter options
-  const weeks = [...new Set(submissions.map((s) => s.week))].filter(Boolean).sort((a, b) => a - b);
+  // Only show submissions for admin-created weeks
+  const validWeekNumbers = new Set(weeks.map((w) => w.weekNumber));
+  const validSubmissions = submissions.filter((s) => validWeekNumbers.has(s.week));
+
+  // Build filter options from valid submissions only
+  const weekOptions = weeks; // use ordered weeks from DB
   const users = [
     ...new Map(
-      submissions
+      validSubmissions
         .filter((s) => s.userId && s.name)
         .map((s) => [s.userId, s.name])
     ).entries(),
@@ -49,7 +64,7 @@ export default function SubmissionsTab() {
     .sort((a, b) => a.name.localeCompare(b.name));
 
   // Apply filters
-  const filtered = submissions.filter((s) => {
+  const filtered = validSubmissions.filter((s) => {
     if (filterWeek !== 'all' && s.week !== Number(filterWeek)) return false;
     if (filterUser !== 'all' && s.userId !== filterUser) return false;
     return true;
@@ -63,7 +78,7 @@ export default function SubmissionsTab() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Submissions</h1>
         <p className="text-sm text-gray-400 mt-1">
-          Showing {filtered.length} of {submissions.length} submissions
+          Showing {filtered.length} of {validSubmissions.length} submissions
         </p>
       </div>
 
@@ -75,8 +90,8 @@ export default function SubmissionsTab() {
           className="text-sm border border-gray-200 rounded-xl px-3 py-2 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400 transition"
         >
           <option value="all">All Weeks</option>
-          {weeks.map((w) => (
-            <option key={w} value={w}>Week {w}</option>
+          {weekOptions.map((w) => (
+            <option key={w.weekNumber} value={w.weekNumber}>Week {w.weekNumber}</option>
           ))}
         </select>
 
@@ -125,7 +140,6 @@ export default function SubmissionsTab() {
               <tbody>
                 {filtered.map((s) => (
                   <tr key={s.id} className="border-b border-gray-50 hover:bg-gray-50 transition">
-                    {/* User */}
                     <td className="px-6 py-3.5">
                       <div className="flex items-center gap-2.5">
                         <div className="w-7 h-7 bg-indigo-100 rounded-full flex items-center justify-center flex-shrink-0">
@@ -134,19 +148,16 @@ export default function SubmissionsTab() {
                         <span className="text-sm font-medium text-gray-900 whitespace-nowrap">{s.name}</span>
                       </div>
                     </td>
-                    {/* Week */}
                     <td className="px-6 py-3.5">
                       <span className="bg-indigo-50 text-indigo-700 text-xs font-bold px-2 py-0.5 rounded-full whitespace-nowrap">
                         W{s.week}
                       </span>
                     </td>
-                    {/* Description */}
                     <td className="px-6 py-3.5 max-w-[220px]">
                       <p className="text-sm text-gray-600 line-clamp-2" title={s.description}>
                         {s.description || '—'}
                       </p>
                     </td>
-                    {/* Link */}
                     <td className="px-6 py-3.5 max-w-[180px]">
                       {s.link ? (
                         <a
@@ -160,11 +171,9 @@ export default function SubmissionsTab() {
                         </a>
                       ) : '—'}
                     </td>
-                    {/* Date */}
                     <td className="px-6 py-3.5 text-xs text-gray-400 whitespace-nowrap">
                       {s.timestamp ? format(s.timestamp, 'MMM d, yyyy') : '—'}
                     </td>
-                    {/* Likes */}
                     <td className="px-6 py-3.5">
                       <span className="text-sm text-gray-500">
                         {Array.isArray(s.likes) ? s.likes.length : 0} ❤️
