@@ -10,6 +10,7 @@ import {
   addDoc,
   updateDoc,
   deleteDoc,
+  getDocs,
   doc,
   serverTimestamp,
 } from 'firebase/firestore';
@@ -195,12 +196,11 @@ export default function Home() {
   const [markingPresent,    setMarkingPresent]    = useState(false);
   const [unmarkingPresent,  setUnmarkingPresent]  = useState(false);
 
-  // ── Auth listener + dynamic admin check ───────────────────────────────────
+  // ── Auth listener + dynamic admin check + user registration ──────────────
   useEffect(() => {
     let adminsUnsub = null;
 
     const authUnsub = onAuthStateChanged(auth, async (fbUser) => {
-      // Clean up previous admins listener
       if (adminsUnsub) { adminsUnsub(); adminsUnsub = null; }
 
       if (fbUser) {
@@ -213,11 +213,53 @@ export default function Home() {
           return;
         }
 
-        const user = { uid: fbUser.uid, email: fbUser.email, name: extractNameFromEmail(fbUser.email) };
-        setCurrentUser(user);
+        // ── Check users collection: blocked status + auto-register ──────────
+        try {
+          const usersSnap = await getDocs(
+            query(collection(db, 'users'), where('email', '==', fbUser.email))
+          );
+
+          if (!usersSnap.empty) {
+            const userDoc  = usersSnap.docs[0];
+            const userData = userDoc.data();
+
+            if (userData.status === 'blocked') {
+              await signOut(auth);
+              setCurrentUser(null);
+              setRoles([]);
+              setAuthError('Your access has been revoked. Please contact your admin.');
+              setAuthLoading(false);
+              return;
+            }
+
+            // Update last seen + uid
+            await updateDoc(doc(db, 'users', userDoc.id), {
+              uid:      fbUser.uid,
+              name:     extractNameFromEmail(fbUser.email),
+              lastSeen: serverTimestamp(),
+              status:   userData.status === 'invited' ? 'active' : userData.status,
+            });
+          } else {
+            // First sign-in — auto-register
+            await addDoc(collection(db, 'users'), {
+              email:        fbUser.email,
+              uid:          fbUser.uid,
+              name:         extractNameFromEmail(fbUser.email),
+              status:       'active',
+              addedByAdmin: false,
+              createdAt:    serverTimestamp(),
+              lastSeen:     serverTimestamp(),
+            });
+          }
+        } catch (err) {
+          console.error('User registration check failed:', err);
+        }
+
+        const userName = extractNameFromEmail(fbUser.email);
+        setCurrentUser({ uid: fbUser.uid, email: fbUser.email, name: userName });
         setAuthError('');
 
-        // Listen to admins collection in real-time
+        // Listen to admins collection in real-time for role resolution
         adminsUnsub = onSnapshot(collection(db, 'admins'), (snap) => {
           const adminEmails = snap.docs.map((d) => d.data().email).filter(Boolean);
           const userRoles   = isAdminEmail(fbUser.email, adminEmails)
