@@ -1,16 +1,69 @@
 import { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import {
+  collection, onSnapshot, query, orderBy,
+  addDoc, deleteDoc, doc, serverTimestamp,
+} from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { format } from 'date-fns';
 
-// ── User Detail View ──────────────────────────────────────────────────────────
-function UserDetail({ user, submissions, attendance, onBack }) {
-  const userAtt  = attendance.filter((a) => a.userId === user.userId).sort((a, b) => a.week - b.week);
-  const userSubs = submissions.filter((s) => s.userId === user.userId).sort((a, b) => b.week - a.week);
+// ── User Detail View ───────────────────────────────────────────────────────────
+function UserDetail({ user, submissions, attendance, weeks, validWeekNumbers, onBack }) {
+  const userAtt  = attendance.filter((a) => a.userId === user.userId && validWeekNumbers.has(a.week)).sort((a, b) => a.week - b.week);
+  const userSubs = submissions.filter((s) => s.userId === user.userId && validWeekNumbers.has(s.week)).sort((a, b) => b.week - a.week);
+
+  const [addingAtt,   setAddingAtt]   = useState(false);
+  const [attWeek,     setAttWeek]     = useState('');
+  const [savingAtt,   setSavingAtt]   = useState(false);
+  const [attError,    setAttError]    = useState('');
+
+  // Weeks the user hasn't attended yet
+  const attendedWeeks = new Set(userAtt.map((a) => a.week));
+  const availableWeeks = weeks.filter((w) => !attendedWeeks.has(w.weekNumber));
+
+  const handleAddAttendance = async () => {
+    if (!attWeek) return;
+    setAttError('');
+    setSavingAtt(true);
+    const week = weeks.find((w) => w.weekNumber === Number(attWeek));
+    try {
+      await addDoc(collection(db, 'attendance'), {
+        userId:    user.userId,
+        name:      user.name,
+        week:      Number(attWeek),
+        topic:     week?.topic || '',
+        timestamp: serverTimestamp(),
+        addedByAdmin: true,
+      });
+      setAddingAtt(false);
+      setAttWeek('');
+    } catch (err) {
+      setAttError('Failed to add attendance. Try again.');
+      console.error(err);
+    } finally {
+      setSavingAtt(false);
+    }
+  };
+
+  const handleDeleteAttendance = async (record) => {
+    if (!window.confirm(`Remove ${user.name}'s attendance for Week ${record.week}?`)) return;
+    try {
+      await deleteDoc(doc(db, 'attendance', record.id));
+    } catch (err) {
+      console.error('Failed to delete attendance:', err);
+    }
+  };
+
+  const handleDeleteSubmission = async (sub) => {
+    if (!window.confirm(`Delete ${user.name}'s submission for Week ${sub.week}? This cannot be undone.`)) return;
+    try {
+      await deleteDoc(doc(db, 'submissions', sub.id));
+    } catch (err) {
+      console.error('Failed to delete submission:', err);
+    }
+  };
 
   return (
     <div className="space-y-6 max-w-5xl">
-      {/* Back */}
       <button
         onClick={onBack}
         className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 px-3 py-1.5 rounded-lg hover:bg-gray-100 transition"
@@ -31,31 +84,80 @@ function UserDetail({ user, submissions, attendance, onBack }) {
             </p>
           </div>
         </div>
-        {/* Week badges */}
         <div>
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">Weeks Attended</p>
           <div className="flex flex-wrap gap-2">
-            {[...user.weeksPresent].sort((a, b) => a - b).map((w) => (
-              <span
-                key={w}
-                className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold px-2.5 py-1 rounded-full"
-              >
+            {[...attendedWeeks].sort((a, b) => a - b).map((w) => (
+              <span key={w} className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold px-2.5 py-1 rounded-full">
                 Week {w} ✓
               </span>
             ))}
-            {user.weeksPresent.size === 0 && (
-              <span className="text-xs text-gray-400">No attendance recorded</span>
-            )}
+            {attendedWeeks.size === 0 && <span className="text-xs text-gray-400">No attendance recorded</span>}
           </div>
         </div>
       </div>
 
       {/* Attendance history */}
       <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100">
-          <h2 className="text-sm font-semibold text-gray-900">Attendance History</h2>
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">Attendance History</h2>
+            <p className="text-xs text-gray-400 mt-0.5">{userAtt.length} records</p>
+          </div>
+          <button
+            onClick={() => { setAddingAtt(true); setAttWeek(''); setAttError(''); }}
+            className="flex items-center gap-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 px-3 py-1.5 rounded-lg transition"
+          >
+            + Add Attendance
+          </button>
         </div>
-        {userAtt.length === 0 ? (
+
+        {/* Add attendance form */}
+        {addingAtt && (
+          <div className="px-6 py-4 bg-indigo-50 border-b border-indigo-100">
+            <p className="text-xs font-bold text-indigo-700 mb-3">Mark {user.name} as present for:</p>
+            {availableWeeks.length === 0 ? (
+              <p className="text-sm text-gray-500">This user has attended all available weeks.</p>
+            ) : (
+              <div className="flex items-center gap-3">
+                <select
+                  value={attWeek}
+                  onChange={(e) => setAttWeek(e.target.value)}
+                  className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                >
+                  <option value="">Select week…</option>
+                  {availableWeeks.map((w) => (
+                    <option key={w.weekNumber} value={w.weekNumber}>
+                      Week {w.weekNumber}{w.topic ? ` — ${w.topic}` : ''}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={handleAddAttendance}
+                  disabled={!attWeek || savingAtt}
+                  className="flex items-center gap-1.5 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-xl transition disabled:opacity-50"
+                >
+                  {savingAtt ? (
+                    <svg className="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                    </svg>
+                  ) : null}
+                  {savingAtt ? 'Saving…' : 'Confirm'}
+                </button>
+                <button
+                  onClick={() => { setAddingAtt(false); setAttError(''); }}
+                  className="text-sm text-gray-500 hover:text-gray-800 px-3 py-2 rounded-xl hover:bg-gray-100 transition"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+            {attError && <p className="text-xs text-rose-600 mt-2">{attError}</p>}
+          </div>
+        )}
+
+        {userAtt.length === 0 && !addingAtt ? (
           <p className="text-sm text-gray-400 px-6 py-5">No attendance records found.</p>
         ) : (
           <table className="w-full">
@@ -64,6 +166,8 @@ function UserDetail({ user, submissions, attendance, onBack }) {
                 <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-widest px-6 py-3">Week</th>
                 <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-widest px-6 py-3">Topic</th>
                 <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-widest px-6 py-3">Date</th>
+                <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-widest px-6 py-3">Source</th>
+                <th className="px-6 py-3" />
               </tr>
             </thead>
             <tbody>
@@ -74,9 +178,24 @@ function UserDetail({ user, submissions, attendance, onBack }) {
                       Week {a.week}
                     </span>
                   </td>
-                  <td className="px-6 py-3 text-sm text-gray-600">{a.topic}</td>
+                  <td className="px-6 py-3 text-sm text-gray-600">{a.topic || '—'}</td>
                   <td className="px-6 py-3 text-sm text-gray-400">
                     {a.timestamp ? format(a.timestamp, 'MMM d, yyyy') : '—'}
+                  </td>
+                  <td className="px-6 py-3">
+                    {a.addedByAdmin ? (
+                      <span className="text-xs text-amber-600 bg-amber-50 border border-amber-100 px-2 py-0.5 rounded-full font-semibold">Admin</span>
+                    ) : (
+                      <span className="text-xs text-emerald-600 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-full font-semibold">Self</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-3 text-right">
+                    <button
+                      onClick={() => handleDeleteAttendance(a)}
+                      className="text-xs font-semibold text-rose-400 hover:text-rose-600 bg-rose-50 hover:bg-rose-100 px-2.5 py-1.5 rounded-lg transition"
+                    >
+                      Remove
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -88,7 +207,7 @@ function UserDetail({ user, submissions, attendance, onBack }) {
       {/* Submissions */}
       <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-100">
-          <h2 className="text-sm font-semibold text-gray-900">Homework Submissions ({userSubs.length})</h2>
+          <h2 className="text-sm font-semibold text-gray-900">Submissions ({userSubs.length})</h2>
         </div>
         {userSubs.length === 0 ? (
           <p className="text-sm text-gray-400 px-6 py-5">No submissions found.</p>
@@ -104,23 +223,25 @@ function UserDetail({ user, submissions, attendance, onBack }) {
                       </span>
                       <span className="text-xs text-gray-400">{s.topic}</span>
                     </div>
-                    <p className="text-sm text-gray-700 mb-2">{s.description}</p>
-                    <a
-                      href={s.link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-indigo-600 hover:underline break-all"
-                    >
-                      {s.link}
-                    </a>
+                    <p className="text-sm text-gray-700 mb-2">{s.description || '—'}</p>
+                    {s.link && (
+                      <a href={s.link} target="_blank" rel="noopener noreferrer"
+                        className="text-xs text-indigo-600 hover:underline break-all">
+                        {s.link}
+                      </a>
+                    )}
                   </div>
-                  <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                  <div className="flex flex-col items-end gap-2 flex-shrink-0">
                     <span className="text-xs text-gray-400">
                       {s.timestamp ? format(s.timestamp, 'MMM d') : '—'}
                     </span>
-                    <span className="text-xs text-gray-400">
-                      {Array.isArray(s.likes) ? s.likes.length : 0} ❤️
-                    </span>
+                    <span className="text-xs text-gray-400">{Array.isArray(s.likes) ? s.likes.length : 0} ❤️</span>
+                    <button
+                      onClick={() => handleDeleteSubmission(s)}
+                      className="text-xs font-semibold text-rose-400 hover:text-rose-600 bg-rose-50 hover:bg-rose-100 px-2.5 py-1.5 rounded-lg transition"
+                    >
+                      Delete
+                    </button>
                   </div>
                 </div>
               </div>
@@ -132,7 +253,7 @@ function UserDetail({ user, submissions, attendance, onBack }) {
   );
 }
 
-// ── Users Table View ──────────────────────────────────────────────────────────
+// ── Users Table View ───────────────────────────────────────────────────────────
 export default function UsersTab() {
   const [weeks,       setWeeks]       = useState([]);
   const [submissions, setSubmissions] = useState([]);
@@ -141,9 +262,7 @@ export default function UsersTab() {
   const [selectedUser, setSelectedUser] = useState(null);
 
   useEffect(() => {
-    let weeksLoaded = false;
-    let subLoaded   = false;
-    let attLoaded   = false;
+    let weeksLoaded = false, subLoaded = false, attLoaded = false;
     const check = () => { if (weeksLoaded && subLoaded && attLoaded) setLoading(false); };
 
     const unsubWeeks = onSnapshot(
@@ -152,14 +271,12 @@ export default function UsersTab() {
     );
     const unsubSubs = onSnapshot(collection(db, 'submissions'), (snap) => {
       setSubmissions(snap.docs.map((d) => ({
-        id: d.id, ...d.data(),
-        timestamp: d.data().timestamp?.toDate?.() ?? null,
+        id: d.id, ...d.data(), timestamp: d.data().timestamp?.toDate?.() ?? null,
       }))); subLoaded = true; check();
     });
     const unsubAtt = onSnapshot(collection(db, 'attendance'), (snap) => {
       setAttendance(snap.docs.map((d) => ({
-        id: d.id, ...d.data(),
-        timestamp: d.data().timestamp?.toDate?.() ?? null,
+        id: d.id, ...d.data(), timestamp: d.data().timestamp?.toDate?.() ?? null,
       }))); attLoaded = true; check();
     });
     return () => { unsubWeeks(); unsubSubs(); unsubAtt(); };
@@ -176,22 +293,15 @@ export default function UsersTab() {
     );
   }
 
-  // Only count weeks that were actually created by admin
   const validWeekNumbers = new Set(weeks.map((w) => w.weekNumber));
-
-  // Build user map — only from real attendance records for valid weeks
-  const userMap = {};
-  const validAttendance = attendance.filter((a) => validWeekNumbers.has(a.week));
+  const validAttendance  = attendance.filter((a) => validWeekNumbers.has(a.week));
   const validSubmissions = submissions.filter((s) => validWeekNumbers.has(s.week));
 
+  const userMap = {};
   [...validAttendance, ...validSubmissions].forEach((item) => {
     if (!item.userId) return;
     if (!userMap[item.userId]) {
-      userMap[item.userId] = {
-        userId: item.userId,
-        name: item.name || 'Unknown',
-        weeksPresent: new Set(),
-      };
+      userMap[item.userId] = { userId: item.userId, name: item.name || 'Unknown', weeksPresent: new Set() };
     }
   });
   validAttendance.forEach((a) => {
@@ -200,13 +310,14 @@ export default function UsersTab() {
 
   const users = Object.values(userMap).sort((a, b) => b.weeksPresent.size - a.weeksPresent.size);
 
-  // Show detail view
   if (selectedUser) {
     return (
       <UserDetail
         user={selectedUser}
         submissions={submissions}
         attendance={attendance}
+        weeks={weeks}
+        validWeekNumbers={validWeekNumbers}
         onBack={() => setSelectedUser(null)}
       />
     );
@@ -214,16 +325,14 @@ export default function UsersTab() {
 
   return (
     <div className="space-y-6 max-w-5xl">
-      {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Users</h1>
-        <p className="text-sm text-gray-400 mt-1">{users.length} members tracked · click a row for details</p>
+        <p className="text-sm text-gray-400 mt-1">{users.length} members · click a row to manage</p>
       </div>
 
-      {/* Table */}
       <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
         {users.length === 0 ? (
-          <p className="text-sm text-gray-400 p-8 text-center">No users found. Data will appear once team members start using the app.</p>
+          <p className="text-sm text-gray-400 p-8 text-center">No users yet. Data appears once team members start using the app.</p>
         ) : (
           <table className="w-full">
             <thead>
@@ -255,16 +364,11 @@ export default function UsersTab() {
                     <td className="px-6 py-3.5">
                       <div className="flex gap-1 flex-wrap">
                         {[...user.weeksPresent].sort((a, b) => a - b).map((w) => (
-                          <span
-                            key={w}
-                            className="bg-emerald-50 text-emerald-700 text-xs font-semibold px-1.5 py-0.5 rounded border border-emerald-100"
-                          >
+                          <span key={w} className="bg-emerald-50 text-emerald-700 text-xs font-semibold px-1.5 py-0.5 rounded border border-emerald-100">
                             W{w}
                           </span>
                         ))}
-                        {user.weeksPresent.size === 0 && (
-                          <span className="text-xs text-gray-300">—</span>
-                        )}
+                        {user.weeksPresent.size === 0 && <span className="text-xs text-gray-300">—</span>}
                       </div>
                     </td>
                     <td className="px-6 py-3.5">
@@ -277,7 +381,7 @@ export default function UsersTab() {
                     </td>
                     <td className="px-6 py-3.5 text-right">
                       <span className="text-xs text-indigo-500 font-semibold group-hover:text-indigo-700 transition">
-                        View →
+                        Manage →
                       </span>
                     </td>
                   </tr>
