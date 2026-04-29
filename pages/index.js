@@ -397,20 +397,30 @@ export default function Home() {
     finally { setUnmarkingPresent(false); }
   };
 
-  const handleSubmitHomework = async ({ link, description }) => {
+  const handleSubmitHomework = async ({ link, description, text, files }) => {
     if (!currentUser) return;
     const docRef = await addDoc(collection(db, 'submissions'), {
       userId: currentUser.uid, name: currentUser.name,
       week: selectedWeek, topic: selectedSession?.topic ?? '',
-      link, description, likes: [], timestamp: serverTimestamp(),
+      link:        link        || '',
+      description: description || '',
+      text:        text        || '',
+      files:       files       || [],
+      likes: [], timestamp: serverTimestamp(),
     });
     setShowSubmitModal(false);
     generateAndStoreFeedback(docRef.id, description, link, selectedWeek, selectedSession?.topic ?? '');
   };
 
-  const handleEditSubmission = async ({ link, description }) => {
+  const handleEditSubmission = async ({ link, description, text, files }) => {
     if (!editingSubmission) return;
-    await updateDoc(doc(db, 'submissions', editingSubmission.id), { link, description, updatedAt: serverTimestamp() });
+    await updateDoc(doc(db, 'submissions', editingSubmission.id), {
+      link:        link        || '',
+      description: description || '',
+      text:        text        || '',
+      files:       files       || [],
+      updatedAt: serverTimestamp(),
+    });
     setEditingSubmission(null);
   };
 
@@ -815,6 +825,7 @@ export default function Home() {
       {showSubmitModal && (
         <SubmitModal
           currentUser={currentUser}
+          selectedWeek={selectedWeek}
           onSubmit={handleSubmitHomework}
           onClose={() => setShowSubmitModal(false)}
         />
@@ -824,8 +835,14 @@ export default function Home() {
       {editingSubmission && (
         <SubmitModal
           currentUser={currentUser}
+          selectedWeek={selectedWeek}
           mode="edit"
-          initialValues={{ link: editingSubmission.link, description: editingSubmission.description }}
+          initialValues={{
+            link:        editingSubmission.link        || '',
+            description: editingSubmission.description || '',
+            text:        editingSubmission.text        || '',
+            files:       editingSubmission.files       || [],
+          }}
           onSubmit={handleEditSubmission}
           onClose={() => setEditingSubmission(null)}
         />
