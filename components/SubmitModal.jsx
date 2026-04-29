@@ -153,9 +153,8 @@ export default function SubmitModal({
   const isEdit = mode === 'edit';
 
   const [form, setForm] = useState({
-    link:        initialValues.link        ?? '',
-    description: initialValues.description ?? '',
-    text:        initialValues.text        ?? '',
+    link: initialValues.link ?? '',
+    text: initialValues.text ?? '',
   });
   const [errors,   setErrors]   = useState({});
   const [loading,  setLoading]  = useState(false);
@@ -281,7 +280,7 @@ export default function SubmitModal({
 
     await onSubmit({
       link:        form.link.trim(),
-      description: form.description.trim(),
+      description: '',
       text:        form.text.trim(),
       files:       allFiles,
     });
@@ -291,7 +290,6 @@ export default function SubmitModal({
     setTimeout(onClose, 1400);
   };
 
-  const MAX_DESC = 280;
   const MAX_TEXT = 2000;
 
   return (
@@ -336,7 +334,7 @@ export default function SubmitModal({
               </p>
             </div>
           ) : (
-            <form id="submit-form" onSubmit={handleSubmit} className="space-y-5" noValidate>
+            <form id="submit-form" onSubmit={handleSubmit} className="space-y-6" noValidate>
 
               {/* Identity pill */}
               <div className="flex items-center gap-2.5 bg-gray-50 border border-gray-100 rounded-xl px-4 py-3">
@@ -387,29 +385,7 @@ export default function SubmitModal({
                 )}
               </div>
 
-              {/* ── Section 2: Short note ───────────────────────────────── */}
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-                  Short Note <span className="normal-case font-normal text-gray-400">(optional)</span>
-                </label>
-                <textarea
-                  name="description"
-                  value={form.description}
-                  onChange={(e) => {
-                    setForm((p) => ({ ...p, description: e.target.value }));
-                    setErrors((p) => ({ ...p, general: null }));
-                  }}
-                  placeholder="Key takeaways, design decisions, what you explored…"
-                  rows={2}
-                  maxLength={MAX_DESC}
-                  className="w-full px-4 py-2.5 text-sm rounded-xl border border-gray-200 placeholder:text-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition resize-none"
-                />
-                <p className={`text-right text-xs mt-0.5 ${form.description.length > MAX_DESC * 0.9 ? 'text-amber-500' : 'text-gray-300'}`}>
-                  {form.description.length}/{MAX_DESC}
-                </p>
-              </div>
-
-              {/* ── Section 3: Long text ────────────────────────────────── */}
+              {/* ── Section 2: Detailed write-up ───────────────────────── */}
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
                   Detailed Write-up <span className="normal-case font-normal text-gray-400">(optional)</span>
