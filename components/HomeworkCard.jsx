@@ -69,6 +69,23 @@ function EditIcon() {
   );
 }
 
+function DownloadIcon() {
+  return (
+    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+      <path strokeLinecap="round" strokeLinejoin="round"
+        d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+    </svg>
+  );
+}
+
+function PlayIcon() {
+  return (
+    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+      <path d="M8 5v14l11-7z" />
+    </svg>
+  );
+}
+
 // ─── AI Feedback section ──────────────────────────────────────────────────────
 function AIFeedback({ feedback, isOwner, onRegenerate, regenerating }) {
   const [expanded, setExpanded] = useState(false);
@@ -119,6 +136,165 @@ function AIFeedback({ feedback, isOwner, onRegenerate, regenerating }) {
   );
 }
 
+// ─── Image gallery ────────────────────────────────────────────────────────────
+function ImageGallery({ images }) {
+  const [lightbox, setLightbox] = useState(null);
+
+  if (!images || images.length === 0) return null;
+
+  return (
+    <>
+      <div className={`grid gap-1.5 ${images.length === 1 ? 'grid-cols-1' : images.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+        {images.slice(0, 3).map((img, i) => (
+          <div key={i} className="relative group">
+            <button
+              onClick={() => setLightbox(img.url)}
+              className="w-full aspect-video rounded-lg overflow-hidden border border-gray-100 hover:border-indigo-200 transition-all block"
+            >
+              <img
+                src={img.url}
+                alt={img.name}
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                loading="lazy"
+              />
+              {/* Overlay for 3+ images */}
+              {i === 2 && images.length > 3 && (
+                <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-lg">
+                  <span className="text-white text-sm font-bold">+{images.length - 3}</span>
+                </div>
+              )}
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {/* Lightbox */}
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 animate-fade-in"
+          onClick={() => setLightbox(null)}
+        >
+          <img
+            src={lightbox}
+            alt="Preview"
+            className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <button
+            onClick={() => setLightbox(null)}
+            className="absolute top-4 right-4 text-white/70 hover:text-white text-2xl font-bold"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ─── Video player ─────────────────────────────────────────────────────────────
+function VideoPlayer({ video }) {
+  const [playing, setPlaying] = useState(false);
+
+  if (!video) return null;
+
+  return (
+    <div className="rounded-xl overflow-hidden border border-gray-100 bg-gray-900 relative group">
+      {!playing ? (
+        <div className="relative">
+          <video
+            src={video.url}
+            className="w-full max-h-48 object-cover opacity-60"
+            preload="metadata"
+          />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <button
+              onClick={() => setPlaying(true)}
+              className="w-12 h-12 bg-white/90 hover:bg-white rounded-full flex items-center justify-center shadow-lg transition-all hover:scale-105"
+            >
+              <PlayIcon />
+            </button>
+          </div>
+          <div className="absolute bottom-2 left-2">
+            <p className="text-[10px] text-white/70 font-medium truncate max-w-[150px]">{video.name}</p>
+          </div>
+        </div>
+      ) : (
+        <video
+          src={video.url}
+          className="w-full max-h-48"
+          controls
+          autoPlay
+          preload="auto"
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Document list ────────────────────────────────────────────────────────────
+function DocumentList({ documents }) {
+  if (!documents || documents.length === 0) return null;
+
+  const getDocIcon = (mimeType) => {
+    if (mimeType === 'application/pdf') return '📄';
+    if (mimeType?.includes('word'))     return '📝';
+    if (mimeType?.includes('powerpoint') || mimeType?.includes('presentation')) return '📊';
+    if (mimeType === 'text/plain')      return '📃';
+    return '📎';
+  };
+
+  const formatSize = (bytes) => {
+    if (!bytes) return '';
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  return (
+    <div className="space-y-1.5">
+      {documents.map((doc, i) => (
+        <a
+          key={i}
+          href={doc.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-2.5 p-2.5 rounded-xl border border-gray-100 hover:border-indigo-200 hover:bg-indigo-50/50 transition-all group"
+        >
+          <span className="text-base leading-none flex-shrink-0">{getDocIcon(doc.type)}</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-gray-700 truncate group-hover:text-indigo-700">{doc.name}</p>
+            {doc.size && <p className="text-[10px] text-gray-400">{formatSize(doc.size)}</p>}
+          </div>
+          <DownloadIcon />
+        </a>
+      ))}
+    </div>
+  );
+}
+
+// ─── Long text section ────────────────────────────────────────────────────────
+function TextContent({ text }) {
+  const [expanded, setExpanded] = useState(false);
+  if (!text) return null;
+
+  const isLong    = text.length > 200;
+  const displayed = isLong && !expanded ? text.slice(0, 200) + '…' : text;
+
+  return (
+    <div className="bg-gray-50 rounded-xl p-3.5 border border-gray-100">
+      <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-line">{displayed}</p>
+      {isLong && (
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          className="mt-1.5 text-[10px] font-semibold text-indigo-500 hover:text-indigo-700 transition-colors"
+        >
+          {expanded ? 'Show less ↑' : 'Read more ↓'}
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ─── Main card ────────────────────────────────────────────────────────────────
 export default function HomeworkCard({
   submission,
@@ -129,7 +305,11 @@ export default function HomeworkCard({
   onEdit,
   index = 0,
 }) {
-  const { id, userId, name, description, link, timestamp, likes = [], aiFeedback } = submission;
+  const {
+    id, userId, name, description, link, text,
+    files = [], timestamp, likes = [], aiFeedback,
+  } = submission;
+
   const [showLikers,   setShowLikers]   = useState(false);
   const [regenerating, setRegenerating] = useState(false);
 
@@ -148,6 +328,13 @@ export default function HomeworkCard({
     : '';
 
   const animationDelay = Math.min(index * 50, 200);
+
+  // Separate file types
+  const safeFiles   = Array.isArray(files) ? files : [];
+  const imageFiles  = safeFiles.filter((f) => f.kind === 'image');
+  const videoFiles  = safeFiles.filter((f) => f.kind === 'video');
+  const docFiles    = safeFiles.filter((f) => f.kind === 'document');
+  const hasMedia    = imageFiles.length > 0 || videoFiles.length > 0 || docFiles.length > 0;
 
   const handleRegenerate = async () => {
     if (!onRegenerateFeedback) return;
@@ -169,12 +356,10 @@ export default function HomeworkCard({
 
       {/* ── Header: avatar + name + badges ──────────────────────────── */}
       <div className="flex items-start gap-3">
-        {/* Avatar */}
         <div className={`w-9 h-9 rounded-xl flex-shrink-0 flex items-center justify-center font-semibold text-sm ${getAvatarColor(name)}`}>
           {getInitials(name)}
         </div>
 
-        {/* Name + time */}
         <div className="flex-1 min-w-0 pt-0.5">
           <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
             <p className="text-sm font-semibold text-gray-900 leading-tight truncate">{name}</p>
@@ -187,7 +372,6 @@ export default function HomeworkCard({
           <p className="text-[11px] text-gray-400 font-medium">{relativeTime}</p>
         </div>
 
-        {/* Right badges: Present + Edit */}
         <div className="flex items-center gap-1.5 flex-shrink-0">
           {isPresent && (
             <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-1 rounded-lg">
@@ -207,14 +391,31 @@ export default function HomeworkCard({
         </div>
       </div>
 
-      {/* ── Description ─────────────────────────────────────────────── */}
-      <div className="flex-1">
-        {description ? (
-          <p className="text-sm text-gray-600 leading-relaxed line-clamp-3">{description}</p>
-        ) : (
-          <p className="text-sm text-gray-300 italic">No description provided.</p>
-        )}
-      </div>
+      {/* ── Short description ────────────────────────────────────────── */}
+      {description && (
+        <p className="text-sm text-gray-600 leading-relaxed line-clamp-3">{description}</p>
+      )}
+      {!description && !text && !hasMedia && !link && (
+        <p className="text-sm text-gray-300 italic">No content provided.</p>
+      )}
+
+      {/* ── Detailed text write-up ───────────────────────────────────── */}
+      <TextContent text={text} />
+
+      {/* ── Image gallery ────────────────────────────────────────────── */}
+      {imageFiles.length > 0 && (
+        <ImageGallery images={imageFiles} />
+      )}
+
+      {/* ── Video player ─────────────────────────────────────────────── */}
+      {videoFiles.length > 0 && (
+        <VideoPlayer video={videoFiles[0]} />
+      )}
+
+      {/* ── Document list ─────────────────────────────────────────────── */}
+      {docFiles.length > 0 && (
+        <DocumentList documents={docFiles} />
+      )}
 
       {/* ── AI Feedback ─────────────────────────────────────────────── */}
       <AIFeedback
@@ -227,16 +428,28 @@ export default function HomeworkCard({
       {/* ── Footer ──────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between pt-3.5 border-t border-gray-50 mt-auto gap-2">
 
-        {/* View work */}
-        <a
-          href={link}
-          target="_blank"
-          rel="noopener noreferrer"
-          title={link}
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors"
-        >
-          View Work <ExternalLinkIcon />
-        </a>
+        {/* View Work link — only if URL provided */}
+        {link ? (
+          <a
+            href={link}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={link}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors"
+          >
+            View Work <ExternalLinkIcon />
+          </a>
+        ) : (
+          /* Content type badges when no link */
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {imageFiles.length > 0  && <span className="text-[10px] font-medium text-gray-400 bg-gray-50 border border-gray-100 px-2 py-0.5 rounded-full">{imageFiles.length} image{imageFiles.length > 1 ? 's' : ''}</span>}
+            {videoFiles.length > 0  && <span className="text-[10px] font-medium text-gray-400 bg-gray-50 border border-gray-100 px-2 py-0.5 rounded-full">{videoFiles.length} video{videoFiles.length > 1 ? 's' : ''}</span>}
+            {docFiles.length > 0    && <span className="text-[10px] font-medium text-gray-400 bg-gray-50 border border-gray-100 px-2 py-0.5 rounded-full">{docFiles.length} doc{docFiles.length > 1 ? 's' : ''}</span>}
+            {text && !imageFiles.length && !videoFiles.length && !docFiles.length && (
+              <span className="text-[10px] font-medium text-gray-400 bg-gray-50 border border-gray-100 px-2 py-0.5 rounded-full">write-up</span>
+            )}
+          </div>
+        )}
 
         <div className="flex items-center gap-2">
           {/* Domain pill */}

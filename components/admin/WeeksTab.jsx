@@ -26,9 +26,17 @@ function EmptyWeeks({ onAdd }) {
 // ── Date helpers ──────────────────────────────────────────────────────────────
 function toDateInputValue(dateStr) {
   if (!dateStr) return '';
+  // Already in YYYY-MM-DD format
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
+  // Try parsing display format like "May 14, 2026"
   const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return '';
-  return d.toISOString().split('T')[0]; // YYYY-MM-DD
+  if (!isNaN(d.getTime())) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+  return '';
 }
 
 function formatDateDisplay(raw) {
@@ -92,10 +100,29 @@ function WeekForm({ initial, initialRecordingLink, onSave, onCancel, saving, cur
   };
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-gray-100 p-6 space-y-5">
-      <h2 className="text-sm font-bold text-gray-900">
-        {initial ? `Editing Week ${initial.weekNumber}` : 'Create New Week'}
-      </h2>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+      onClick={onCancel}
+    >
+    <form
+      onSubmit={handleSubmit}
+      onClick={(e) => e.stopPropagation()}
+      className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6 space-y-5"
+    >
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-bold text-gray-900">
+          {initial ? `Editing Week ${initial.weekNumber}` : 'Create New Week'}
+        </h2>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="text-gray-400 hover:text-gray-600 transition p-1 rounded-lg hover:bg-gray-100"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
 
       {/* Row 1: Week number + date */}
       <div className="grid grid-cols-2 gap-4">
@@ -287,6 +314,7 @@ function WeekForm({ initial, initialRecordingLink, onSave, onCancel, saving, cur
         </button>
       </div>
     </form>
+    </div>
   );
 }
 
@@ -299,7 +327,10 @@ export default function WeeksTab({ currentUser }) {
   const [editingWeek,         setEditingWeek]        = useState(null);
   const [editingRecordingLink, setEditingRecordingLink] = useState('');
   const [saving,              setSaving]             = useState(false);
+  const [saveError,           setSaveError]          = useState('');
+  const [saveSuccess,         setSaveSuccess]        = useState('');
   const [lightbox,            setLightbox]           = useState(null);
+  const formRef = useRef(null);
 
   useEffect(() => {
     const unsubWeeks = onSnapshot(
@@ -319,6 +350,8 @@ export default function WeeksTab({ currentUser }) {
 
   const handleSave = async (form) => {
     setSaving(true);
+    setSaveError('');
+    setSaveSuccess('');
     try {
       const weekNum = Number(form.weekNumber);
       const data = {
@@ -328,43 +361,66 @@ export default function WeeksTab({ currentUser }) {
         date:        form.date.trim(),
         images:      form.images,
       };
+
       if (editingWeek) {
         await updateDoc(doc(db, 'weeks', editingWeek.id), { ...data, updatedAt: serverTimestamp() });
       } else {
         await addDoc(collection(db, 'weeks'), { ...data, createdBy: currentUser.uid, createdAt: serverTimestamp() });
       }
-      // Save recording if provided
+
+      // Save/update recording — use `url` field to match what the main page reads
       if (form.recordingLink?.trim()) {
         const existing = recordings[weekNum];
         if (existing) {
           await updateDoc(doc(db, 'recordings', existing.id), {
-            recordingLink: form.recordingLink.trim(), updatedAt: serverTimestamp(),
+            url: form.recordingLink.trim(),
+            updatedAt: serverTimestamp(),
           });
         } else {
           await addDoc(collection(db, 'recordings'), {
-            week: weekNum, topic: form.topic.trim(),
-            recordingLink: form.recordingLink.trim(),
-            createdBy: currentUser.uid, createdByName: currentUser.name,
-            updatedAt: serverTimestamp(),
+            week:          weekNum,
+            topic:         form.topic.trim(),
+            url:           form.recordingLink.trim(),
+            createdBy:     currentUser?.uid,
+            createdByName: currentUser?.name,
+            createdAt:     serverTimestamp(),
+            updatedAt:     serverTimestamp(),
           });
         }
       }
-      setShowForm(false);
-      setEditingWeek(null);
+
+      setSaveSuccess(editingWeek ? `Week ${form.weekNumber} updated!` : `Week ${form.weekNumber} created!`);
+      setTimeout(() => {
+        setShowForm(false);
+        setEditingWeek(null);
+        setSaveSuccess('');
+      }, 1000);
+    } catch (err) {
+      console.error('Save failed:', err);
+      setSaveError(
+        err.code === 'permission-denied'
+          ? 'Permission denied — check your Firestore rules.'
+          : `Save failed: ${err.message}`
+      );
     } finally {
       setSaving(false);
     }
   };
 
   const openEdit = (week) => {
+    const rec = recordings[week.weekNumber];
     setEditingWeek(week);
-    setEditingRecordingLink(recordings[week.weekNumber]?.recordingLink ?? '');
+    setEditingRecordingLink(rec?.url ?? rec?.recordingLink ?? '');
+    setSaveError('');
+    setSaveSuccess('');
     setShowForm(true);
   };
 
   const openCreate = () => {
     setEditingWeek(null);
     setEditingRecordingLink('');
+    setSaveError('');
+    setSaveSuccess('');
     setShowForm(true);
   };
 
@@ -407,7 +463,19 @@ export default function WeeksTab({ currentUser }) {
         )}
       </div>
 
-      {/* Create / Edit form */}
+      {/* Save feedback */}
+      {saveError && (
+        <div className="p-3 bg-rose-50 border border-rose-100 rounded-xl text-xs text-rose-600 font-medium">
+          ⚠️ {saveError}
+        </div>
+      )}
+      {saveSuccess && (
+        <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-xl text-xs text-emerald-700 font-medium">
+          ✓ {saveSuccess}
+        </div>
+      )}
+
+      {/* Create / Edit modal */}
       {showForm && (
         <WeekForm
           initial={editingWeek}
@@ -443,11 +511,11 @@ export default function WeeksTab({ currentUser }) {
                   {week.description && (
                     <p className="text-xs text-gray-500 line-clamp-2 mb-1">{week.description}</p>
                   )}
-                  {recordings[week.weekNumber]?.recordingLink && (
+                  {(recordings[week.weekNumber]?.url || recordings[week.weekNumber]?.recordingLink) && (
                     <div className="flex items-center gap-1.5 mt-1">
                       <span className="text-xs">🎧</span>
                       <a
-                        href={recordings[week.weekNumber].recordingLink}
+                        href={recordings[week.weekNumber]?.url || recordings[week.weekNumber]?.recordingLink}
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={(e) => e.stopPropagation()}

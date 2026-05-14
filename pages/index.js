@@ -260,14 +260,23 @@ export default function Home() {
         setAuthError('');
 
         // Listen to admins collection in real-time for role resolution
-        adminsUnsub = onSnapshot(collection(db, 'admins'), (snap) => {
-          const adminEmails = snap.docs.map((d) => d.data().email).filter(Boolean);
-          const userRoles   = isAdminEmail(fbUser.email, adminEmails)
-            ? ['admin', 'team']
-            : ['team'];
-          setRoles(userRoles);
-          setAuthLoading(false);
-        });
+        adminsUnsub = onSnapshot(
+          collection(db, 'admins'),
+          (snap) => {
+            const adminEmails = snap.docs.map((d) => d.data().email).filter(Boolean);
+            const userRoles   = isAdminEmail(fbUser.email, adminEmails)
+              ? ['admin', 'team']
+              : ['team'];
+            setRoles(userRoles);
+            setAuthLoading(false);
+          },
+          (err) => {
+            // Firestore rules may block admins read — default to team role
+            console.warn('Admins listener error (defaulting to team):', err.code);
+            setRoles(['team']);
+            setAuthLoading(false);
+          }
+        );
       } else {
         setCurrentUser(null);
         setRoles([]);
@@ -294,6 +303,12 @@ export default function Home() {
           if (prev !== null) return prev;
           return data.length > 0 ? data[data.length - 1].weekNumber : 1;
         });
+      },
+      (err) => {
+        // Firestore rules may block weeks read — unblock the UI with defaults
+        console.warn('Weeks listener error:', err.code);
+        setWeeksLoading(false);
+        setSelectedWeek((prev) => prev ?? 1);
       }
     );
     return () => unsub();
@@ -312,12 +327,18 @@ export default function Home() {
           .sort((a, b) => (b.timestamp?.getTime() ?? 0) - (a.timestamp?.getTime() ?? 0));
         setSubmissions(data);
         setDataLoading(false);
+      },
+      (err) => {
+        console.warn('Submissions listener error:', err.code);
+        setSubmissions([]);
+        setDataLoading(false);
       }
     );
 
     const attUnsub = onSnapshot(
       query(collection(db, 'attendance'), where('week', '==', selectedWeek)),
-      (snap) => setAttendance(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
+      (snap) => setAttendance(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+      (err) => { console.warn('Attendance listener error:', err.code); setAttendance([]); }
     );
 
     const recUnsub = onSnapshot(
@@ -325,7 +346,8 @@ export default function Home() {
       (snap) => {
         if (!snap.empty) { const d = snap.docs[0]; setRecording({ id: d.id, ...d.data() }); }
         else setRecording(null);
-      }
+      },
+      (err) => { console.warn('Recordings listener error:', err.code); setRecording(null); }
     );
 
     return () => { subUnsub(); attUnsub(); recUnsub(); };
@@ -397,20 +419,30 @@ export default function Home() {
     finally { setUnmarkingPresent(false); }
   };
 
-  const handleSubmitHomework = async ({ link, description }) => {
+  const handleSubmitHomework = async ({ link, description, text, files }) => {
     if (!currentUser) return;
     const docRef = await addDoc(collection(db, 'submissions'), {
       userId: currentUser.uid, name: currentUser.name,
       week: selectedWeek, topic: selectedSession?.topic ?? '',
-      link, description, likes: [], timestamp: serverTimestamp(),
+      link:        link        || '',
+      description: description || '',
+      text:        text        || '',
+      files:       files       || [],
+      likes: [], timestamp: serverTimestamp(),
     });
     setShowSubmitModal(false);
     generateAndStoreFeedback(docRef.id, description, link, selectedWeek, selectedSession?.topic ?? '');
   };
 
-  const handleEditSubmission = async ({ link, description }) => {
+  const handleEditSubmission = async ({ link, description, text, files }) => {
     if (!editingSubmission) return;
-    await updateDoc(doc(db, 'submissions', editingSubmission.id), { link, description, updatedAt: serverTimestamp() });
+    await updateDoc(doc(db, 'submissions', editingSubmission.id), {
+      link:        link        || '',
+      description: description || '',
+      text:        text        || '',
+      files:       files       || [],
+      updatedAt: serverTimestamp(),
+    });
     setEditingSubmission(null);
   };
 
@@ -815,6 +847,7 @@ export default function Home() {
       {showSubmitModal && (
         <SubmitModal
           currentUser={currentUser}
+          selectedWeek={selectedWeek}
           onSubmit={handleSubmitHomework}
           onClose={() => setShowSubmitModal(false)}
         />
@@ -824,8 +857,14 @@ export default function Home() {
       {editingSubmission && (
         <SubmitModal
           currentUser={currentUser}
+          selectedWeek={selectedWeek}
           mode="edit"
-          initialValues={{ link: editingSubmission.link, description: editingSubmission.description }}
+          initialValues={{
+            link:        editingSubmission.link        || '',
+            description: editingSubmission.description || '',
+            text:        editingSubmission.text        || '',
+            files:       editingSubmission.files       || [],
+          }}
           onSubmit={handleEditSubmission}
           onClose={() => setEditingSubmission(null)}
         />
